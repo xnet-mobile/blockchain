@@ -21,6 +21,10 @@ There are three smart contracts included in this repo:
   with circumstances like lost credentials on the part of the
   beneficiary.
 
+## Scripts
+In the [scripts](./scripts) directory, you will find deployment
+scripts for the smart contracts
+
 ## Dependencies
 This project is being developed as a
 [hardhat](https://hardhat.org/getting-started/) project, built on top
@@ -62,17 +66,25 @@ packages and their dependencies:
 	npm install --save-dev @openzeppelin/contracts
 	npm install --save-dev @0x0proxy/multi
 
-## compiling
+## compiling smart contracts
 To compile the smart contracts, type
 
    npx hardhat compile
 
-## deploying XNETLockup2
+## deploying smart contracts
+
+### depoying XNET.sol
+To deploy the XNET.sol contract, use
+
+	npx hardhat run --network $NETWORK scripts/deploy-XNET.js
+	
+### deploying the XNETLockup2.sol
 
 To deploy the XNETLockup2 smart contract in batch, use the
 `handle-lockups.sh` script, in conjunction with the relevant
 `deploy-XNETLockup2.js` hardhat node script and the relevant
-network-dependent JSON configuration files.
+network-dependent JSON configuration files, for which examples are
+provided for the localhost network.
 
 This will require setting the environment variables `NETWORK` and
 `ESCROWADDR` appropriately. You will need a `.env` file with appropriate
