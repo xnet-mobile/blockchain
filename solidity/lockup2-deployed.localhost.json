@@ -1,0 +1,16 @@
+{
+  "count": 1,
+  "beneficiaries": [
+    [
+      "0x940029ebf6D0C4aaDE9c8bC118901701886B8664",
+      1699948800,
+      360
+    ]
+  ],
+  "agents": [
+    "0xAA292E8611aDF267e563f334Ee42320aC96D0463"
+  ],
+  "wallets": [
+    "0xAA292E8611aDF267e563f334Ee42320aC96D0463"
+  ]
+}
