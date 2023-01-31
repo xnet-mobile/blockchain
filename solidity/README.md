@@ -2,6 +2,25 @@
 Smart contracts and related scripts for XNET Mobile. Created by Sint
 Connexa <connexa@xnet.company>
 
+## Contents
+
+There are three smart contracts included in this repo:
+
+* [contracts/XNET.sol](contracts/XNET.sol) &mdash; the XNET Mobile ERC20 utility token, as minted
+* [contracts/XNETLockup2.sol](contracts/XNETLockup2.sol) &mdash; the
+   XNET vesting wallet contract used for locked rewards. Derived from
+   the OpenZeppelin VestingWallet.sol contract, but with the addition
+   of an escrow role that allows for the slashing/revocation of
+   rewards, and thus dealing with XNET-specific use cases as well as
+   the general case of lost or compromised credentials on the part of
+   the beneficiary.
+* [contracts/XNETlockup.sol](contracts/XNETlockup.sol) &mdash; the
+  first version of the XNET vesting wallet, a plain vanilla
+  implementation of the OpenZeppelin VestingWallet. DEPRECATED due to
+  the lack of the escrow role that allows for slashing and dealing
+  with circumstances like lost credentials on the part of the
+  beneficiary.
+
 ## Dependencies
 This project is being developed as a
 [hardhat](https://hardhat.org/getting-started/) project, built on top
@@ -44,7 +63,7 @@ packages and their dependencies:
 	npm install --save-dev @0x0proxy/multi
 
 ## compiling
-To complie the smart contracts, type
+To compile the smart contracts, type
 
    npx hardhat compile
 
@@ -52,9 +71,9 @@ To complie the smart contracts, type
 
 To deploy the XNETLockup2 smart contract in batch, use the
 `handle-lockups.sh` script, in conjunction with the relevant
-`deploy-XNETLockup2.js` hardhat node script and the relvant
+`deploy-XNETLockup2.js` hardhat node script and the relevant
 network-dependent JSON configuration files.
 
-This will require setting the environment variables NETWORK and
-ESCROWADDR appropriately. You will need a `.env` file with appropriate
+This will require setting the environment variables `NETWORK` and
+`ESCROWADDR` appropriately. You will need a `.env` file with appropriate
 credentials to deploy to networks other than `localhost`
