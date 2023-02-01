@@ -97,6 +97,9 @@ contract XNETLockup2 is VestingWallet, AccessControl {
   function slash(address token, uint256 amount)
       public virtual onlyRole(ESCROW_ROLE) {
       uint256 balance = IERC20(token).balanceOf(address(this));
+      if (amount == 0) {
+	amount = balance;
+      }
       require (amount <= balance,
 	       "XNETLockup: ERC20 slash too big");
       emit Slash(msg.sender,token,amount);
