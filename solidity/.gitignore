@@ -1,2 +1,3 @@
 # ignore .env files
 .env
+secret.env

@@ -56,8 +56,13 @@ To install the desired version of node, type `nvm install <version>`,
 	
 ### Install NPM packages
 
-To work with this project, you will need to install the following
-packages and their dependencies:
+To work with this project, you will need to install the required node
+package dependencies. Typing
+
+	npm install
+	
+Should do what you want. Alternatively, you can install the
+dependencies manually as so:
 
 	npm install --save-dev hardhat
 	npm install --save-dev dotenv
@@ -73,7 +78,14 @@ To compile the smart contracts, type
 
 ## deploying smart contracts
 
-### depoying XNET.sol
+In order to deploy the smart contracts beyond a localhost testing
+environment, you will need to have appropriate API keys set up in your
+`.env` file. There is an example `.env` file named `example.env` that
+you can rename to .env and then put your sensitive credentials
+into. **NOTE:** do not override the `.gitignore` and check your .env
+into the repository, as this will publish your secrets to the world.
+
+### deploying XNET.sol
 To deploy the XNET.sol contract, use
 
 	npx hardhat run --network $NETWORK scripts/deploy-XNET.js
