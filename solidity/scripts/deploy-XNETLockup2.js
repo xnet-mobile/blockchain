@@ -4,6 +4,7 @@
 // scripts/deploy-XNETLockup2.js
 
 const multi = require('@0x0proxy/multi');
+require("dotenv").config();
 
 var network = process.env.NETWORK;
 var escrow = process.env.ESCROWADDR;
@@ -12,13 +13,13 @@ var escrow = process.env.ESCROWADDR;
 // wallet address
 function formatBene(bene) {
     if (bene.length == undefined ||
-	bene.length != 3)
+	bene.length != 4)
 	return multi.red("<not bene: " + bene + ">");
     
-    return multi.colorAddress(bene[0]) +
+    return bene[3] + " — " + multi.colorAddress(bene[0]) +
 	" : " +
 	new Date(bene[1]*1000).toISOString() +
-	" -- " + new Date((bene[1]+bene[2])*1000).toISOString();
+	" ↔ " + new Date((bene[1]+bene[2])*1000).toISOString();
 }
 
 // do a deep-ish membership test for an array of arrays

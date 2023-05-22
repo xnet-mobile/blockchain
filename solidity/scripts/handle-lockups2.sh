@@ -8,9 +8,18 @@ if [ "${NETWORK}" == "" ]; then
 fi
 echo "deploying new vesting wallet contracts, if any"
 
-if [ "${1}" == "deploy" ]; then
+if [ -n "${1}" ] && [ "${1}" == "deploy" ]; then
+    if [ -n "${2}" ]; then
+	echo "updating beneficiaries from CSV"
+	tmpfile=$(mktemp)
+	cat "${2}" >> mergedbenes.csv
+	cp "lockup2-beneficiaries.${NETWORK}.json" "lockup2-beneficiaries.${NETWORK}.bak.json"
+	cat "${2}" | scripts/makedates.sh > $tmpfile
+	node scripts/mergebenes.js $tmpfile
+    fi
     echo "deploying contracts"
-    npx hardhat run --network $NETWORK scripts/deploy-XNETlockup.js
+    echo npx hardhat run --network $NETWORK scripts/deploy-XNETlockup2.js
+    npx hardhat run --network $NETWORK scripts/deploy-XNETlockup2.js
     echo "pausing"
     sleep 10
 fi
@@ -23,9 +32,9 @@ while read -r line; do
     BEN=`echo $line | awk '{print $3}'`
     START=`echo $line | awk '{print $4}'`
     DUR=`echo $line | awk '{print $5}'`
-    npx hardhat verify --contract contracts/XNETlockup.sol:XNETLockup --network ${NETWORK} $ADDR $BEN $AGENT $START $DUR
+    npx hardhat verify --contract contracts/XNETLockup2.sol:XNETLockup2 --network ${NETWORK} $ADDR $BEN $AGENT $START $DUR
     echo "pausing"
     sleep 10
-done < lockup-new-deploys.${NETWORK}.txt
+done < lockup2-new-deploys.${NETWORK}.txt
 
 echo "done"
