@@ -6,7 +6,10 @@ Connexa <connexa@xnet.company>
 
 There are three smart contracts included in this repo:
 
-* [contracts/XNET.sol](contracts/XNET.sol) &mdash; the XNET Mobile ERC20 utility token, as minted
+* [contracts/XNETXSplit.sol](contracts/XNETSplit.sol) &mdash; payment
+  splitter contract used for token distribution
+* [contracts/XNET.sol](contracts/XNET.sol) &mdash; the XNET Mobile
+  ERC20 utility token, as minted
 * [contracts/XNETLockup2.sol](contracts/XNETLockup2.sol) &mdash; the
    XNET vesting wallet contract used for locked rewards. Derived from
    the OpenZeppelin VestingWallet.sol contract, but with the addition
@@ -31,12 +34,12 @@ This project is being developed as a
 of NPM.  It also uses some other open-source tools.
 
 In order to work with these contracts and scripts , you will want to
-make sure that a recent version of NPM is installed (version 14.4 is
+make sure that a recent version of NPM is installed (version 16.0 is
 known to work) and that appropriate packages have been
 installed. **Note** The version of NPM available on Ubuntu 20.04
 (Focal) is not recent enough.
 
-### Making sure you have NPM 14.4
+### Making sure you have NPM 16.0
 The simplest way to deal with a potentially outdated version of Node
 is by installing NVM, a version manager for node.js.  You can install
 NVM as follows:
@@ -47,12 +50,12 @@ To check the version of nvm, type `nvm --version`.  You should see
 `0.35.3` or similar. You may need to restart your terminal or update
 environment variables for the changes to take effect.
 
-### Install NPM 14.4 using NVM
+### Install NPM 16.0 using NVM
 
 To install the desired version of node, type `nvm install <version>`,
-*e.g.* for version 14.4 type:
+*e.g.* for version 16.0 type:
 
-	nvm install 14.4.0
+	nvm install 16.0
 	
 ### Install NPM packages
 
