@@ -46,7 +46,8 @@ default:
 }
 
 module.exports = {
-    solidity: "0.8.2",
+    //solidity: "0.8.2",
+    solidity: "0.8.19",
     etherscan: {
 	apiKey: etherKey,
     },

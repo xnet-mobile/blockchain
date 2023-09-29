@@ -68,7 +68,7 @@ dependencies manually as so:
 	npm install --save-dev dotenv
 	npm install --save-dev @nomiclabs/hardhat-ethers ethers 
 	npm install --save-dev @nomiclabs/hardhat-etherscan
-	npm install --save-dev @openzeppelin/contracts
+	npm install --save-dev @openzeppelin/contracts@4.9.3
 	npm install --save-dev @0x0proxy/multi
 
 ## compiling smart contracts
