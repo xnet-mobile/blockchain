@@ -7,7 +7,7 @@ pragma solidity ^0.8.3;
  * Epoch -- an epoch calculator. Useful for things like XNET.
  *
  *
- * XNETEpochStart = 1668412800  // Star of the XNET epoch in Unix time:
+ * XNETpochStart = 1668412800  // Star of the XNET epoch in Unix time:
  *                              // November 14th, 2022, midnight Pacific
  *
  * XNETEpochDur = 14 * 24 * 60 * 60 // 14 days in seconds
@@ -15,11 +15,23 @@ pragma solidity ^0.8.3;
  */
 
 contract Epoch {
+  /* constants */
+
+  /* If either the _epochStart or _epochDur parameters of the
+   * constructor are zero, the XNET values are used instead. */
+  
+  /* just in case you forgot the start of the XNET epoch 0 */
+  /* 14 November 2022, Midnight US Pacific Time */
+  uint256 public constant XNETepochStart = 1668412800;
+  
+  /* the duration of an XNET epoch, 14 days in seconds */
+  uint256 public constant XNETepochDur = 14 * 24 * 60 * 60;
+  
   /* unix time for start of epoch */
-  uint256 public epochStart;
+  uint256 public immutable epochStart;
 
   /* total number of seconds in epoch */
-  uint256 public epochDur;
+  uint256 public immutable epochDur;
 
   /* NOTE: currentEpoch will revert if the current time is before the
    * epochStart */
@@ -51,6 +63,12 @@ contract Epoch {
 
   constructor(uint256 _epochStart,
 	      uint256 _epochDur) {
+    if (_epochStart == 0) 
+      _epochStart = XNETepochStart;
+    
+    if (_epochDur == 0)
+      _epochDur = XNETepochDur;
+
     epochStart = _epochStart;
     epochDur = _epochDur;
   }

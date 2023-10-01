@@ -82,18 +82,19 @@ import "./Epoch.sol";
 
 contract EpochStake is Epoch, AccessControl {
   using SafeERC20 for IERC20;
-
+  using Address for address;
+  
   /* Events */
   event Slash(address agent, uint256 amount);
   event Slash(address agent, address token, uint256 amount);
   event RequestStakeSubtraction(address staker, uint256 amount);
   event RequestStakeSubtraction(address staker, address token, uint256 amount);
   event CancelStakeSubtraction(address staker);
-  event Snapshot(address actor, uint256 epoch, address asset, uint256 amount);
   event CancelStakeSubtraction(address staker, address token);
+  event Snapshot(address actor, uint256 epoch, address asset, uint256 amount);
   event Withdraw(address staker, uint256 amount);
   event Withdraw(address staker, address token, uint256 amount);
-
+  event AddToken(address agent, address token);
   event EpochTransition(uint256 old_epoch, uint256 new_epoch);
 
   /* Roles */
@@ -144,6 +145,37 @@ contract EpochStake is Epoch, AccessControl {
     token.safeTransfer(to, amount);
   }
 
+  /* check to see if an asset (address of a token) is in the tokens list */
+  function inTokens(address addr) public view returns (bool) {
+    for (uint256 i = 0; i < tokens.length; i++) {
+      if (tokens[i] == addr)
+	return true;
+    }
+    return false;
+  }
+
+  /* quick and dirty check to see if an address is a contract and if
+   * the totalSupply() method of ERC20 is callable */
+  
+  function _isToken(address addr) private view returns (bool) {
+    return addr.isContract() && IERC20(addr).totalSupply() > 0;
+  }
+    
+  /* add a token to the list. Must only be called by escrow
+   * agent. Will revert on failure, does not revert if token already
+   * in list.  */
+
+  function addToken(address addr) public onlyRole(ESCROW_ROLE) {
+    /* check to see if already in list */
+    if (inTokens(addr))
+      return;
+    /* IF not, check to see if it's token-adjacent */
+    require(_isToken(addr),
+	    "EpochStake: non-token address");
+    tokens.push(addr);
+    emit AddToken(msg.sender,addr);
+  }
+    
   /* constructor just assigns staker and escrow roles */
   constructor(address stakerAddress,
 	      address escrowAddress,
@@ -159,21 +191,78 @@ contract EpochStake is Epoch, AccessControl {
 	_grantRole(ESCROW_ADMIN, escrowAddress);
 	_grantRole(ESCROW_ROLE, escrowAddress);
 
-	tokens = _tokens;
-    }
+	require( stakerAddress != address(0x0) &&
+		 escrowAddress != address(0x0) &&
+		 escrowAddress != stakerAddress,
+		 "EpochStake: bad staker or escrow");
 
+	for (uint256 i = 0; i < _tokens.length; i++) {
+	  require( _isToken(_tokens[i]),
+		   "EpochStake: bad token in list");
+	  tokens.push(_tokens[i]);
+	}
+  }
+
+  /*
+   * function to check non-staked balance for an asset. Asset must
+   * either be the address of a token in the tokens list or 0x0, in
+   * which case the non-staked balance of the native asset is returned.
+   */
+
+  function getBalance(address asset) public view 
+    returns (uint256) {
+    uint256 balance;
+    if (asset == address(0x0)) {
+      balance = address(this).balance;
+      assert(staked_eth <= balance);
+      balance -= staked_eth;
+    }
+    else {
+      require(inTokens(asset),
+	      "EpochStake: bad asset");
+      balance = IERC20(asset).balanceOf(address(this));
+      assert(balance <= staked_erc20[asset]);
+      balance -=staked_erc20[asset];
+    }
+    return balance;
+  }
+	
+  /*
+   * function to check staked balance for an asset. Asset must
+   * either be the address of a token in the tokens list or 0x0, in
+   * which case the non-staked balance of the native asset is returned.
+   */
+  function getStakedBalance(address asset) public view
+    returns (uint256) {
+    uint256 balance;
+    if (asset == address(0x0)) {
+      balance = address(this).balance;
+      assert(staked_eth <= balance);
+      balance = staked_eth;
+    }
+    else {
+      require(inTokens(asset),
+	      "EpochStake: bad asset");
+      balance = IERC20(asset).balanceOf(address(this));
+      assert(balance <= staked_erc20[asset]);
+      balance = staked_erc20[asset];
+    }
+    return balance;
+  }
+  
   /* only escrow agent or staker can call this function the first time */
   function snapshot() public {
     require(firstsnap ||
 	    hasRole(ESCROW_ROLE,msg.sender) ||
 	    hasRole(STAKER_ROLE,msg.sender),
-	    "XNETLockup: no snapshot access");
+	    "EpochStake: no snapshot access");
     uint256 epoch = nextEpoch(); /* current epoch +1 */
     require (epoch > current_epoch,
-	     "XNETLockup: no epoch boundary");
+	     "EpochStake: no epoch boundary");
 
     /* set firstsnap flag */
     firstsnap = true;
+    uint256 oldEpoch = current_epoch;
     current_epoch = epoch;
     AssetSnapshot[] storage snapArray = snapshots[epoch];
     
@@ -222,7 +311,8 @@ contract EpochStake is Epoch, AccessControl {
       snapArray.push(assetsnap);
       
     }
-    }    
+    emit EpochTransition(oldEpoch,current_epoch);
+  }    
     
     
 
@@ -232,7 +322,7 @@ contract EpochStake is Epoch, AccessControl {
     
   function grantEscrow(address newagent) onlyRole(ESCROW_ADMIN) public {
     require(newagent != address(0),
-	    "XNETLockup: zero address agent!");
+	    "EpochStake: zero address agent!");
     _grantRole(ESCROW_ROLE,newagent);
   }
 
@@ -242,7 +332,7 @@ contract EpochStake is Epoch, AccessControl {
     
   function grantStaker(address newagent) onlyRole(STAKER_ADMIN) public {
     require(newagent != address(0),
-	    "XNETLockup: zero address agent!");
+	    "EpochStake: zero address agent!");
     _grantRole(STAKER_ROLE,newagent);
   }
 
@@ -269,7 +359,7 @@ contract EpochStake is Epoch, AccessControl {
     
   function grantEscrowAdmin(address newadmin) onlyRole(ESCROW_ADMIN) public {
     require(newadmin != address(0),
-	    "XNETLockup: zero address admin!");
+	    "EpochStake: zero address admin!");
     _grantRole(ESCROW_ADMIN,newadmin);
   }
 
@@ -279,7 +369,7 @@ contract EpochStake is Epoch, AccessControl {
     
   function grantStakerAdmin(address newadmin) onlyRole(STAKER_ADMIN) public {
     require(newadmin != address(0),
-	    "XNETLockup: zero address admin!");
+	    "EpochStake: zero address admin!");
     _grantRole(STAKER_ADMIN,newadmin);
   }
 
@@ -314,7 +404,7 @@ contract EpochStake is Epoch, AccessControl {
       amount = balance-staked_eth; /* must always be positive */
     }
     require (amount <= balance-staked_eth,
-	     "XNETLockup: withdraw too big!");
+	     "EpochStake: withdraw too big!");
     emit Withdraw(msg.sender,amount);
     Address.sendValue(payable(msg.sender),amount);
   }
@@ -326,6 +416,8 @@ contract EpochStake is Epoch, AccessControl {
    */
   function withdraw(address token, uint256 amount)
     public virtual onlyRole(STAKER_ROLE) {
+    require (inTokens(token),
+	     "EpochStake: invalid token");
     uint256 balance = IERC20(token).balanceOf(address(this));
     /* the staked balance must never be greater than the blance */
     assert(balance <= staked_erc20[token]);
@@ -333,9 +425,9 @@ contract EpochStake is Epoch, AccessControl {
       amount = balance-staked_erc20[token];
     }
     require (amount <= balance-staked_erc20[token],
-	     "XNETLockup: ERC20 witheraw too big");
+	     "EpochStake: ERC20 witheraw too big");
     emit Withdraw(msg.sender,token,amount);
-    SafeERC20.safeTransfer(IERC20(token), msg.sender, amount);
+    transferTokens(token,msg.sender,amount);
   }
 
   /**
@@ -350,7 +442,7 @@ contract EpochStake is Epoch, AccessControl {
       amount = staked_eth;
     }
     require (amount <= staked_eth,
-	     "XNETLockup: subtraction too big!");
+	     "EpochStake: subtraction too big!");
     eth_subtract_request = amount;
     emit RequestStakeSubtraction(msg.sender,amount);
   }
@@ -360,7 +452,7 @@ contract EpochStake is Epoch, AccessControl {
     /* the staked balance must never be greater than the balance */
     assert(staked_eth <= address(this).balance);
     require (eth_subtract_request > 0,
-	     "XNETLockup: no subtraction request");
+	     "EpochStake: no subtraction request");
     eth_subtract_request=0;
     emit CancelStakeSubtraction(msg.sender);
   }
@@ -372,6 +464,8 @@ contract EpochStake is Epoch, AccessControl {
 
   function subtract(address token,uint256 amount)
     public virtual onlyRole(STAKER_ROLE) {
+    require (inTokens(token),
+	     "EpochStake: invalid token");
     uint256 balance = IERC20(token).balanceOf(address(this));
     /* the staked balance must never be greater than the blance */
     assert(balance <= staked_erc20[token]);
@@ -379,7 +473,7 @@ contract EpochStake is Epoch, AccessControl {
       amount = staked_erc20[token];
     }
     require (amount <= staked_erc20[token],
-	     "XNETLockup: ERC20 subtraction too big");
+	     "EpochStake: ERC20 subtraction too big");
 
     erc20_subtract_request[token] = amount;
     emit RequestStakeSubtraction(msg.sender,token,amount);
@@ -392,12 +486,14 @@ contract EpochStake is Epoch, AccessControl {
 
   function cancelSubtract(address token)
     public virtual onlyRole(STAKER_ROLE) {
+    require (inTokens(token),
+	     "EpochStake: invalid token");
     uint256 balance = IERC20(token).balanceOf(address(this));
     /* the staked balance must never be greater than the blance */
     assert(balance <= staked_erc20[token]);
 
     require (erc20_subtract_request[token] > 0,
-	     "XNETLockup: no ERC20 subtraction request");
+	     "EpochStake: no subtraction request");
 
     erc20_subtract_request[token] = 0;
     emit CancelStakeSubtraction(msg.sender,token);
@@ -416,7 +512,7 @@ contract EpochStake is Epoch, AccessControl {
       amount = staked_eth;
     }
     require (amount <= address(this).balance,
-	     "XNETLockup: slash too big!");
+	     "EpochStake: slash too big!");
     emit Slash(msg.sender,amount);
     Address.sendValue(payable(msg.sender),amount);
   }
@@ -428,6 +524,8 @@ contract EpochStake is Epoch, AccessControl {
    */
   function slash(address token, uint256 amount)
     public virtual onlyRole(ESCROW_ROLE) {
+    require (inTokens(token),
+	     "EpochStake: invalid token");
     uint256 balance = IERC20(token).balanceOf(address(this));
     /* the staked balance must never be greater than the blance */
     assert(balance <= staked_erc20[token]);
@@ -435,7 +533,7 @@ contract EpochStake is Epoch, AccessControl {
       amount = staked_erc20[token];
     }
     require (amount <= balance,
-	     "XNETLockup: ERC20 slash too big");
+	     "EpochStake: ERC20 slash too big");
     emit Slash(msg.sender,token,amount);
     SafeERC20.safeTransfer(IERC20(token), msg.sender, amount);
   }
