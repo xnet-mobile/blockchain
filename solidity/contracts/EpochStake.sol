@@ -85,14 +85,10 @@ contract EpochStake is Epoch, AccessControl {
   using Address for address;
   
   /* Events */
-  event Slash(address agent, uint256 amount);
   event Slash(address agent, address token, uint256 amount);
-  event RequestStakeSubtraction(address staker, uint256 amount);
   event RequestStakeSubtraction(address staker, address token, uint256 amount);
-  event CancelStakeSubtraction(address staker);
   event CancelStakeSubtraction(address staker, address token);
   event Snapshot(address actor, uint256 epoch, address asset, uint256 amount);
-  event Withdraw(address staker, uint256 amount);
   event Withdraw(address staker, address token, uint256 amount);
   event AddToken(address agent, address token);
   event EpochTransition(uint256 old_epoch, uint256 new_epoch);
@@ -145,6 +141,12 @@ contract EpochStake is Epoch, AccessControl {
     token.safeTransfer(to, amount);
   }
 
+  receive() external payable {
+  }
+
+  fallback() external payable {
+  }
+  
   /* check to see if an asset (address of a token) is in the tokens list */
   function inTokens(address addr) public view returns (bool) {
     for (uint256 i = 0; i < tokens.length; i++) {
@@ -158,6 +160,9 @@ contract EpochStake is Epoch, AccessControl {
    * the totalSupply() method of ERC20 is callable */
   
   function _isToken(address addr) private view returns (bool) {
+    /* NOTE: this will revert with "function selector was not
+     * recognized and there's no fallback function" if a non-token is
+     * passed in" */
     return addr.isContract() && IERC20(addr).totalSupply() > 0;
   }
     
@@ -220,8 +225,9 @@ contract EpochStake is Epoch, AccessControl {
     else {
       require(inTokens(asset),
 	      "EpochStake: bad asset");
-      balance = IERC20(asset).balanceOf(address(this));
-      assert(balance <= staked_erc20[asset]);
+      IERC20 token = IERC20(asset);
+      balance = token.balanceOf(address(this));
+      assert(staked_erc20[asset] <= balance);
       balance -=staked_erc20[asset];
     }
     return balance;
@@ -244,7 +250,7 @@ contract EpochStake is Epoch, AccessControl {
       require(inTokens(asset),
 	      "EpochStake: bad asset");
       balance = IERC20(asset).balanceOf(address(this));
-      assert(balance <= staked_erc20[asset]);
+      assert(staked_erc20[asset] <= balance);
       balance = staked_erc20[asset];
     }
     return balance;
@@ -396,7 +402,7 @@ contract EpochStake is Epoch, AccessControl {
    * in the contract. Callable only by holders of the STAKER role. If
    * amount is zero, withdraw full amount
    */
-  function withdraw(uint256 amount) public virtual onlyRole(STAKER_ROLE) {
+  function withdrawEth(uint256 amount) public virtual onlyRole(STAKER_ROLE) {
     /* the staked balance must never be greater than the balance */
     uint256 balance = address(this).balance;
     assert(staked_eth <= balance);
@@ -405,17 +411,21 @@ contract EpochStake is Epoch, AccessControl {
     }
     require (amount <= balance-staked_eth,
 	     "EpochStake: withdraw too big!");
-    emit Withdraw(msg.sender,amount);
+    emit Withdraw(msg.sender,address(0x0),amount);
     Address.sendValue(payable(msg.sender),amount);
   }
 
   /**
-   * @dev withdraw up to the full amount of the non-staked ERC20
-   * token held by the contract.  Callable only by holders of the
-   * STAKER_ROLE. If amount is zero, withdraw full amount.
+   * @dev withdraw up to the full amount of a non-staked asset. If
+   * token parameter is zero address, call withdrawsEth instead. If
+   * non-zero, token must be the address of an ERC20 token held by the
+   * contract.  Callable only by holders of the STAKER_ROLE. If amount
+   * is zero, withdraw full amount.
    */
-  function withdraw(address token, uint256 amount)
+  function withdrawAsset(address token, uint256 amount)
     public virtual onlyRole(STAKER_ROLE) {
+    if (token == address(0))
+      return withdrawEth(amount);
     require (inTokens(token),
 	     "EpochStake: invalid token");
     uint256 balance = IERC20(token).balanceOf(address(this));
@@ -442,9 +452,9 @@ contract EpochStake is Epoch, AccessControl {
       amount = staked_eth;
     }
     require (amount <= staked_eth,
-	     "EpochStake: subtraction too big!");
+         "EpochStake: subtraction too big!");
     eth_subtract_request = amount;
-    emit RequestStakeSubtraction(msg.sender,amount);
+    emit RequestStakeSubtraction(msg.sender,address(0x0),amount);
   }
 
   /* cancel native token stake subtraction request */
@@ -454,7 +464,7 @@ contract EpochStake is Epoch, AccessControl {
     require (eth_subtract_request > 0,
 	     "EpochStake: no subtraction request");
     eth_subtract_request=0;
-    emit CancelStakeSubtraction(msg.sender);
+    emit CancelStakeSubtraction(msg.sender,address(0x0));
   }
     
   /**
@@ -513,7 +523,7 @@ contract EpochStake is Epoch, AccessControl {
     }
     require (amount <= address(this).balance,
 	     "EpochStake: slash too big!");
-    emit Slash(msg.sender,amount);
+    emit Slash(msg.sender,address(0),amount);
     Address.sendValue(payable(msg.sender),amount);
   }
 
