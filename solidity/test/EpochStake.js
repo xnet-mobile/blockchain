@@ -4,6 +4,7 @@
 // We import Chai to use its asserting functions here.
 const chai = require("chai");
 const { expect } = require("chai");
+const multi = require("@0x0proxy/multi")
 
 // necessary for correct bignum comparison resuilts
 const { solidity} = require("ethereum-waffle");
@@ -201,22 +202,23 @@ describe("EpochStake contract", function () {
 	    // .. and unstaked should be 0
 	    expect( await epochStake.getBalance(AddressZero)).to.equal(0n);
 	});
-	it("Test unstaked asset withdrawl functionality.  Transfer assets in, attepmpt withdrawl by non-staker (will revert), withdraw some by correct account, snapshot, and then attempt withdrawl of staked assets (will revert)", async function() {
+	it("Test unstaked asset withdrawl functionality.  Transfer assets in, attepmpt withdrawl by escrow agent and non-staker (will revert), withdraw some by correct account, snapshot and make sure resulting balance is correct", async function() {
 	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
 	    // transfer 1M tokens to EpochStake contract
 	    await XNETToken.transfer(epochStake.address,1000000000000000000000000n)
 	    // transfer 10000 Wei to EpochStake contract
 	    await owner.sendTransaction({ to: epochStake.address,
 	     				  value: 1000000000000000000000n });
-	    // attempt unstaked asset withdrawl by Escrow agent, shoudl revert
-	    expect( await epochStake.getStakedBalance(XNETToken.address)).to.equal(0);
+	    // attempt unstaked asset withdrawl by Escrow agent, should revert
 	    await expect( epochStake.withdrawEth(1000)).to.be.revertedWith("AccessControl: account 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 is missing role 0xb9e206fa2af7ee1331b72ce58b6d938ac810ce9b5cdb65d35ab723fd67badf9e");
+	    // attempt unstaked asset withdrawl by non-staker, should revert
+	    await expect( epochStake.connect(addr2).withdrawEth(1000)).to.be.revertedWith("AccessControl: account 0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc is missing role 0xb9e206fa2af7ee1331b72ce58b6d938ac810ce9b5cdb65d35ab723fd67badf9e");
 	    const strtbal = await ethers.provider.getBalance(addr1.address);
 	    console.log(`starting balance of staker: ${strtbal}`);
 	    await epochStake.connect(addr1).withdrawEth(0);
 	    const newbal =  await ethers.provider.getBalance(addr1.address);
 	    console.log(`ending balance of staker: ${newbal}`);
-
+	    expect(multi.bigClose(newbal,BigInt(String(strtbal)) + BigInt("1000000000000000000000")));
 	});
 	    
 	
