@@ -515,13 +515,14 @@ contract EpochStake is Epoch, AccessControl {
    * token) in the contract.  Callable only by holders of the
    * ESCROW_ROLE. If amount is zero, withdraw full amount.
    */
-  function slash(uint256 amount) public virtual onlyRole(ESCROW_ROLE) {
+  function slashEth(uint256 amount) public virtual onlyRole(ESCROW_ROLE) {
     /* the staked balance must never be greater than the balance */
     assert(staked_eth <= address(this).balance);
     if (amount == 0) {
       amount = staked_eth;
     }
-    require (amount <= address(this).balance,
+    require (amount <= address(this).balance &&
+	     amount <= staked_eth,
 	     "EpochStake: slash too big!");
     emit Slash(msg.sender,address(0),amount);
     Address.sendValue(payable(msg.sender),amount);
@@ -532,17 +533,17 @@ contract EpochStake is Epoch, AccessControl {
    * token held by the contract.  Callable only by holders of the
    * ESCROW_ROLE. If amount is zero, withdraw full amount.
    */
-  function slash(address token, uint256 amount)
+  function slashAsset(address token, uint256 amount)
     public virtual onlyRole(ESCROW_ROLE) {
     require (inTokens(token),
 	     "EpochStake: invalid token");
     uint256 balance = IERC20(token).balanceOf(address(this));
     /* the staked balance must never be greater than the blance */
-    assert(balance <= staked_erc20[token]);
+    assert(staked_erc20[token] <= balance);
     if (amount == 0) {
       amount = staked_erc20[token];
     }
-    require (amount <= balance,
+    require (amount <= staked_erc20[token],
 	     "EpochStake: ERC20 slash too big");
     emit Slash(msg.sender,token,amount);
     SafeERC20.safeTransfer(IERC20(token), msg.sender, amount);

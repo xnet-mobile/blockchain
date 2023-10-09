@@ -1,16 +1,37 @@
 // Test code for the EpochStake.sol contract
 // Created Sat Sep 30 22:06:23 PDT 2023 by Sint Connexa
 
+//-----------------------------------
+// require statements and related
+
 // We import Chai to use its asserting functions here.
 const chai = require("chai");
 const { expect } = require("chai");
-const multi = require("@0x0proxy/multi")
-
 // necessary for correct bignum comparison resuilts
 const { solidity} = require("ethereum-waffle");
 chai.use(solidity);
 
+// Use Rich's multitool library
+//const multi = require("@0x0proxy/multi")
+const multi = require("./multi.js")
+
+// conveince constant for Eth zero address
 const { AddressZero } = ethers.constants;
+
+//-----------------------
+// Utility functions
+
+// sleep for the requested number of miliseconds
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Get the current unix time in seconds
+function getCurrentUnixTimeInSeconds() {
+    const currentTimeMilliseconds = Date.now();
+    const currentTimeSeconds = Math.floor(currentTimeMilliseconds / 1000);
+    return currentTimeSeconds;
+}
 
 // We use `loadFixture` to share common setups (or fixtures) between tests.
 // Using this simplifies your tests and makes them run faster, by taking
@@ -47,7 +68,7 @@ describe("EpochStake contract", function () {
 	
 	const XNETToken = await ethers.deployContract("XNET");
 	const xnetaddr = XNETToken.address;
-	console.log("xnetaddr: " + xnetaddr);
+	// console.log("xnetaddr: " + xnetaddr);
 	const EpochStake = await ethers.getContractFactory("EpochStake");
 	const epochStake = await EpochStake.deploy(addr1.address,
 						   addr2.address,
@@ -58,6 +79,31 @@ describe("EpochStake contract", function () {
 	// Fixtures can return anything you consider useful for your
 	// tests
 	return { XNETToken, epochStake, EpochStake,  owner, addr1, addr2 };
+    }
+
+    async function deployFastEpochFixture() {
+	// Deploy an instance of the epoch stake contract with a start
+	// time of fifteen seconds from now and an epoch length of ten
+	// seconds.
+
+	const [owner, addr1, addr2] = await ethers.getSigners();
+
+	const now = getCurrentUnixTimeInSeconds();
+	const epochstart = now+15;
+	const epochdur = 20;
+	const XNETToken = await ethers.deployContract("XNET");
+	const xnetaddr = XNETToken.address;
+	// console.log("xnetaddr: " + xnetaddr);
+	const EpochStake = await ethers.getContractFactory("EpochStake");
+	const fastStake = await EpochStake.deploy(addr1.address,
+						   addr2.address,
+						   epochstart,
+						   epochdur,
+						   [ xnetaddr ]);
+
+	// Fixtures can return anything you consider useful for your
+	// tests
+	return { epochstart, epochdur, XNETToken, fastStake, EpochStake,  owner, addr1, addr2 };
     }
 
     describe("Deployment", function () {
@@ -77,12 +123,12 @@ describe("EpochStake contract", function () {
 	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
 	    const intokens = await epochStake.inTokens(XNETToken.address);
 	    const outtokens = await epochStake.inTokens(owner.address);
-	    expect(intokens && !outtokens);
+	    expect(intokens && !outtokens).to.be.true;
 	});
 	it("EpochStake should recognized that a wallet address is not a valid asset", async function() {
 	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
 	    const outtokens = await epochStake.inTokens(owner.address);
-	    expect(!outtokens);
+	    expect(!outtokens).to.be.true;
 	});
 
 	it("EpochState should revert on constructor if wallet address is included in list of assets", async function () {
@@ -90,7 +136,7 @@ describe("EpochStake contract", function () {
 
 	    const XNETToken = await ethers.deployContract("XNET");
 	    const xnetaddr = XNETToken.address;
-	    console.log("xnetaddr: " + xnetaddr);
+	    // console.log("xnetaddr: " + xnetaddr);
 	    const EpochStake = await ethers.getContractFactory("EpochStake");
 	    await expect( EpochStake.deploy(addr1.address,
 					    addr2.address,
@@ -106,7 +152,7 @@ describe("EpochStake contract", function () {
 
 	    const XNETToken = await ethers.deployContract("XNET");
 	    const xnetaddr = XNETToken.address;
-	    console.log("xnetaddr: " + xnetaddr);
+	    // console.log("xnetaddr: " + xnetaddr);
 	    const EpochStake = await ethers.getContractFactory("EpochStake");
 	    const epochStake = await EpochStake.deploy(addr1.address,
 						       addr2.address,
@@ -121,7 +167,9 @@ describe("EpochStake contract", function () {
 					      epochStake.address])
 			).to.be.revertedWith("function returned an unexpected amount of data");
 	});
-
+    });
+    describe("Initialization", function() {
+	
 	it("EpochStake should return zero for current_epoch on first call", async function() {
 	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
 	    expect(await epochStake.current_epoch()).to.equal(0);
@@ -143,7 +191,9 @@ describe("EpochStake contract", function () {
 	    expect(await epochStake.current_epoch()).to.equal(24);
 	    
 	});
-	
+    });
+
+    describe("Transfers, Withdrawls, and Slashings in Epoch 0", function() {
 	it("After first snapshot() call, call by non staker/agent reverts on no epoch boundary", async function() {
 	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
 	    await epochStake.connect(addr1).snapshot();
@@ -214,15 +264,91 @@ describe("EpochStake contract", function () {
 	    // attempt unstaked asset withdrawl by non-staker, should revert
 	    await expect( epochStake.connect(addr2).withdrawEth(1000)).to.be.revertedWith("AccessControl: account 0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc is missing role 0xb9e206fa2af7ee1331b72ce58b6d938ac810ce9b5cdb65d35ab723fd67badf9e");
 	    const strtbal = await ethers.provider.getBalance(addr1.address);
-	    console.log(`starting balance of staker: ${strtbal}`);
+	    //console.log(`starting balance of staker: ${strtbal}`);
 	    await epochStake.connect(addr1).withdrawEth(0);
 	    const newbal =  await ethers.provider.getBalance(addr1.address);
-	    console.log(`ending balance of staker: ${newbal}`);
-	    expect(multi.bigClose(newbal,BigInt(String(strtbal)) + BigInt("1000000000000000000000")));
+	    //console.log(`ending balance of staker: ${newbal}`);
+	    expect(multi.bigClose(String(newbal),String(BigInt(strtbal) + 1000000000000000000000n))).to.be.true;
 	});
+	it("Test slashing. Verify reverts when wrong acount slashes, when slash is too big, that specified amount can be slashed as well as full amount on zero", async function() {
+	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
+	    // transfer 100 tokens to EpochStake contract
+	    await XNETToken.transfer(epochStake.address,
+				     100n * (10n **18n));
+	    // transfer 10 Eth to EpochStake contract
+	    await owner.sendTransaction({ to: epochStake.address,
+	     				  value: (10n * (10n ** 18n)) });
+	    // snapshot so as to stake assets
+	    await epochStake.connect(addr1).snapshot();
 	    
-	
+	    // attempt to slash with the wrong acount
+	    await expect( epochStake.slashAsset(XNETToken.address,0)).to.be.revertedWith("AccessControl: account 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 is missing role 0x2fdac322ee704ce09f0773f7f3f92eb98d5e7c836ee9c056cccd5f61041e5e3f");
+	    await expect( epochStake.slashEth(0)).to.be.revertedWith("AccessControl: account 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 is missing role 0x2fdac322ee704ce09f0773f7f3f92eb98d5e7c836ee9c056cccd5f61041e5e3f");
+
+	    // get the staring balance of the escrow agent account
+	    const escrow = addr2;
+	    const epochStakeEscrow = epochStake.connect(escrow);
+	    const strtbal = await XNETToken.balanceOf(escrow.address);;
+
+	    // Slash 10 tokens
+	    await epochStakeEscrow.slashAsset(XNETToken.address,
+					      10n * (10n**18n));
+	    const newbal =  await XNETToken.balanceOf(escrow.address);
+	    //console.log(`start balance: ${strtbal}  new balance: ${newbal}` );
+	    expect(multi.bigClose(newbal,BigInt(String(strtbal)) + BigInt(10n*(10n**18n)))).to.be.true;
+	    // Slash eth
+	    const strtbal2 = await ethers.provider.getBalance(escrow.address);
+
+	    // Slash 1 eth
+	    await epochStakeEscrow.slashEth(1n * (10n**18n));
+	    const newbal2 = await ethers.provider.getBalance(escrow.address);
+	    //console.log(`start balance: ${strtbal2}  new balance: ${newbal2}` );
+	    expect(multi.bigClose(BigInt(String(newbal2)),BigInt(String(strtbal2)) + BigInt(String(1n*(10n**18n))))).to.be.true;
+
+	});
     });
+    
+    describe("Epoch Transitions from pre-zero to post zero", function() {
+	
+	it("Test epoch boundary transition with stake reduction", async function() {
+	    const {epochstart, epochdur, XNETToken, fastStake, owner, addr1, addr2} = await loadFixture(deployFastEpochFixture);
+	    // we are in epoch -1 territory to start with
+	    expect( await fastStake.nextEpoch()).to.equal(0);
+	    await expect (fastStake.connect(addr1).snapshot()).to.be.revertedWith('EpochStake: no epoch boundary');
+	    await expect (fastStake.currentEpoch()).to.be.revertedWith('Epoch: epoch is negative');
+	    process.stdout.write(`            waiting for epoch boundary ${epochstart}`);
+	    tm = getCurrentUnixTimeInSeconds();
+	    while(tm < epochstart ) {
+		process.stdout.write(".");
+		await sleep(500);	// half a second
+		tm = getCurrentUnixTimeInSeconds();
+	    }
+	    console.log(`done: ${tm}`);
+	   
+	    // snapshot
+	    await fastStake.connect(addr1).snapshot();
+	    expect( await fastStake.currentEpoch()).to.equal(0);
+	    expect( await fastStake.nextEpoch()).to.equal(1);
+
+	    process.stdout.write(`            waiting for epoch boundary ${epochstart+epochdur}`);
+	    tm = getCurrentUnixTimeInSeconds();
+	    while(tm < epochstart + epochdur ) {
+		process.stdout.write(".");
+		await sleep(500);	// one second
+		tm = getCurrentUnixTimeInSeconds();
+	    }
+	    console.log(`done: ${tm}`);
+	   
+	    // snapshot
+	    await fastStake.connect(addr1).snapshot();
+	    expect( await fastStake.nextEpoch()).to.equal(2);
+	});
+    });
+	    
+	    
+	    
+
+	
 });
 
 	   
