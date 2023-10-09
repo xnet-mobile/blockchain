@@ -6,10 +6,20 @@
 
 // We import Chai to use its asserting functions here.
 const chai = require("chai");
-const { expect } = require("chai");
+const { expect, use } = require("chai");
+
 // necessary for correct bignum comparison resuilts
 const { solidity} = require("ethereum-waffle");
+
 chai.use(solidity);
+
+// fopr event testing
+const chaiAsPromised = require('chai-as-promised');
+use(chaiAsPromised);
+
+// chai.use(require("chai-events"));
+// const should = chai.should();
+const EventEmitter = require("events");
 
 // Use Rich's multitool library
 //const multi = require("@0x0proxy/multi")
@@ -41,6 +51,14 @@ const {
 } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 
 describe("EpochStake contract", function () {
+
+    // set up event catcher
+    let emitter = null;
+    beforeEach(function() {
+	emitter = new EventEmitter();
+    });
+
+
     // We define a fixture to reuse the same setup in every test. We
     // use loadFixture to run this setup once, snapshot that state,
     // and reset Hardhat Network to that snapshot in every test.
@@ -111,21 +129,21 @@ describe("EpochStake contract", function () {
 	// of your tests. It receives the test name, and a callback function.
 	//
 	// If the callback function is async, Mocha will `await` it.
-	it("XNET should return correct total supply", async function () {
+	it("XNET should return correct total supply of 24B", async function () {
 	    // We use loadFixture to setup our environment, and then assert that
 	    // things went well
 	    const {XNETToken, owner, addr1, addr2} = await loadFixture(deployXNETFixture);
 	    const ts = await XNETToken.totalSupply();
-	    expect(ts).to.equal(24000000000000000000000000000n);
+	    expect(ts).to.equal(24n * (10n ** 9n) * (10n ** 18n));
 	 
 	});
-	it("EpochStake should recognized that XNET is a valid asset", async function() {
+	it("EpochStake should recognize that XNET is a valid asset", async function() {
 	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
 	    const intokens = await epochStake.inTokens(XNETToken.address);
 	    const outtokens = await epochStake.inTokens(owner.address);
 	    expect(intokens && !outtokens).to.be.true;
 	});
-	it("EpochStake should recognized that a wallet address is not a valid asset", async function() {
+	it("EpochStake should recognize that a wallet address is not a valid asset", async function() {
 	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
 	    const outtokens = await epochStake.inTokens(owner.address);
 	    expect(!outtokens).to.be.true;
@@ -170,14 +188,9 @@ describe("EpochStake contract", function () {
     });
     describe("Initialization", function() {
 	
-	it("EpochStake should return zero for current_epoch on first call", async function() {
+	it("EpochStake should return zero for current_epoch_plus1 on first call", async function() {
 	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
-	    expect(await epochStake.current_epoch()).to.equal(0);
-	});
-
-	it("EpochStake should return zero for current_epoch on first call", async function() {
-	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
-	    expect(await epochStake.current_epoch()).to.equal(0);
+	    expect(await epochStake.current_epoch_plus1()).to.equal(0);
 	});
 
 	it("EpochStake should revert with \"no snapshot access\" if first call to snapshot() is not from escrow agent or staker", async function() {
@@ -185,10 +198,13 @@ describe("EpochStake contract", function () {
 	    await expect( epochStake.snapshot()).to.be.revertedWith("EpochStake: no snapshot access");
 	});
 
-	it("EpochStake should not revert and then return correct epoch plus one when first shapshot() call is by staker/agent", async function() {
+	it("EpochStake should not revert and then return correct epoch plus one when first shapshot() call is by staker/agent. Successful snapshot call should result in EpochTransition event.", async function() {
 	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
-	    await epochStake.connect(addr1).snapshot();
-	    expect(await epochStake.current_epoch()).to.equal(24);
+	    const snap = await epochStake.connect(addr1).snapshot();
+	    await expect(snap).to.emit(epochStake, 'EpochTransition')
+		.withArgs(0,24);
+
+	    expect(await epochStake.current_epoch_plus1()).to.equal(24);
 	    
 	});
     });
@@ -199,21 +215,22 @@ describe("EpochStake contract", function () {
 	    await epochStake.connect(addr1).snapshot();
 	    await expect( epochStake.snapshot()).to.be.revertedWith("EpochStake: no epoch boundary");
 	});
+	
 	it("Transfer 10,0000 Wei and 1M tokens to EpochStake before snapshot, verify balance", async function() {
 	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
 	    // transfer 1M tokens to EpochStake contract address
-	    await XNETToken.transfer(epochStake.address,1000000000000000000000000n);
+	    await XNETToken.transfer(epochStake.address,1000000n * (10n ** 18n));
 	    // Transfer 10,000 Wei to EpochStake contract address
 	    await owner.sendTransaction({ to: epochStake.address,
 	     				  value: 100000n });
 	    // Balance must now be 10,000 Wei
 	    expect( await ethers.provider.getBalance(epochStake.address)).to.equal(100000n);
 	    // Token balance of the EpochStake contract must now be 1M
-	    expect( await XNETToken.balanceOf(epochStake.address)).to.equal(1000000000000000000000000n)
+	    expect( await XNETToken.balanceOf(epochStake.address)).to.equal(1000000n * (10n ** 18n))
 	    // Verify that the unstaked balance of Eth is 10,000 Wei
 	    expect( await epochStake.getBalance(AddressZero)).to.equal(100000);
 	    // Verify that the unstaked balance of XNET is 1M
-	    expect( await epochStake.getBalance(XNETToken.address)).to.equal(1000000000000000000000000n);
+	    expect( await epochStake.getBalance(XNETToken.address)).to.equal(1000000n * (10n ** 18n));
 	    // Verify that the staked balance of both assets is zero
 	    expect( await epochStake.getStakedBalance(AddressZero)).to.equal(0n);
 	    expect( await epochStake.getStakedBalance(XNETToken.address)).to.equal(0n);
@@ -222,7 +239,7 @@ describe("EpochStake contract", function () {
 	it("Transfer 10,0000 Wei and 1M tokens to EpochStake and snapshot, verify staked and unstaked balances of both assets before and after snapshot", async function() {
 	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
 	    // transfer 1M tokens to EpochStake contract
-	    await XNETToken.transfer(epochStake.address,1000000000000000000000000n)
+	    await XNETToken.transfer(epochStake.address,1000000n * (10n ** 18n))
 	    // transfer 10000 Wei to EpochStake contract
 	    await owner.sendTransaction({ to: epochStake.address,
 	     				  value: 100000n });
@@ -230,7 +247,7 @@ describe("EpochStake contract", function () {
 	    // Check total Eth balance of EpochStake contract, must be 10,000
 	    expect( await ethers.provider.getBalance(epochStake.address)).to.equal(100000n);
 	    // Check total XNET TOken balance of contract, must be 1M
-	    expect( await XNETToken.balanceOf(epochStake.address)).to.equal(1000000000000000000000000n)
+	    expect( await XNETToken.balanceOf(epochStake.address)).to.equal(1000000n * (10n ** 18n))
 
 	    // Chek the unstaked Eth balance of the EpochStake
 	    // contract, should be 10,000 Wei
@@ -238,13 +255,19 @@ describe("EpochStake contract", function () {
 	    // Check the staked balance of the EpochStke contract, should be 0
 	    expect( await epochStake.getStakedBalance(AddressZero)).to.equal(0);
 	    // Check the unstaked XNET token balance, should be 1M
-	    expect( await epochStake.getBalance(XNETToken.address)).to.equal(1000000000000000000000000n);
+	    expect( await epochStake.getBalance(XNETToken.address)).to.equal(1000000n * (10n ** 18n));
 	    // Check the staked XNET token balance, should be 0
 	    expect( await epochStake.getStakedBalance(XNETToken.address)).to.equal(0);
 	    // Call Snapshot, which should make all unstaked balances staked
-	    await epochStake.connect(addr1).snapshot();
+	    const snap = await epochStake.connect(addr1).snapshot();
+	    await expect(snap).to.emit(epochStake,'Snapshot')
+		.withArgs(addr1.address,24,XNETToken.address,1000000n * (10n ** 18n) );
+	    await expect(snap).to.emit(epochStake,'Snapshot')
+		.withArgs(addr1.address,24,AddressZero,100000n);
+
+
 	    // Now staked balance of XNET token shouild be 1M
-	    expect( await epochStake.getStakedBalance(XNETToken.address)).to.equal(1000000000000000000000000n);
+	    expect( await epochStake.getStakedBalance(XNETToken.address)).to.equal(1000000n * (10n ** 18n));
 	    /// ... and unstaked balance should be 0
 	    expect( await epochStake.getBalance(XNETToken.address)).to.equal(0n);
 	    // Now staked balance of native asset should be 10,000 Wei
@@ -255,20 +278,23 @@ describe("EpochStake contract", function () {
 	it("Test unstaked asset withdrawl functionality.  Transfer assets in, attepmpt withdrawl by escrow agent and non-staker (will revert), withdraw some by correct account, snapshot and make sure resulting balance is correct", async function() {
 	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
 	    // transfer 1M tokens to EpochStake contract
-	    await XNETToken.transfer(epochStake.address,1000000000000000000000000n)
+	    await XNETToken.transfer(epochStake.address,1000000n * (10n ** 18n))
 	    // transfer 10000 Wei to EpochStake contract
 	    await owner.sendTransaction({ to: epochStake.address,
-	     				  value: 1000000000000000000000n });
+	     				  value: 1000n * (10n ** 18n) });
 	    // attempt unstaked asset withdrawl by Escrow agent, should revert
 	    await expect( epochStake.withdrawEth(1000)).to.be.revertedWith("AccessControl: account 0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266 is missing role 0xb9e206fa2af7ee1331b72ce58b6d938ac810ce9b5cdb65d35ab723fd67badf9e");
 	    // attempt unstaked asset withdrawl by non-staker, should revert
 	    await expect( epochStake.connect(addr2).withdrawEth(1000)).to.be.revertedWith("AccessControl: account 0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc is missing role 0xb9e206fa2af7ee1331b72ce58b6d938ac810ce9b5cdb65d35ab723fd67badf9e");
-	    const strtbal = await ethers.provider.getBalance(addr1.address);
+	    const strtbal = BigInt(await ethers.provider
+				   .getBalance(addr1.address));
 	    //console.log(`starting balance of staker: ${strtbal}`);
 	    await epochStake.connect(addr1).withdrawEth(0);
 	    const newbal =  await ethers.provider.getBalance(addr1.address);
 	    //console.log(`ending balance of staker: ${newbal}`);
-	    expect(multi.bigClose(String(newbal),String(BigInt(strtbal) + 1000000000000000000000n))).to.be.true;
+	    expect(multi.bigClose(newbal,
+				  strtbal + 1000n * (10n ** 18n)))
+		.to.be.true;
 	});
 	it("Test slashing. Verify reverts when wrong acount slashes, when slash is too big, that specified amount can be slashed as well as full amount on zero", async function() {
 	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
@@ -288,22 +314,27 @@ describe("EpochStake contract", function () {
 	    // get the staring balance of the escrow agent account
 	    const escrow = addr2;
 	    const epochStakeEscrow = epochStake.connect(escrow);
-	    const strtbal = await XNETToken.balanceOf(escrow.address);;
+	    const strtbal = BigInt(await XNETToken.balanceOf(escrow.address));
 
 	    // Slash 10 tokens
 	    await epochStakeEscrow.slashAsset(XNETToken.address,
 					      10n * (10n**18n));
-	    const newbal =  await XNETToken.balanceOf(escrow.address);
+	    const newbal =  BigInt(await XNETToken.balanceOf(escrow.address));
 	    //console.log(`start balance: ${strtbal}  new balance: ${newbal}` );
-	    expect(multi.bigClose(newbal,BigInt(String(strtbal)) + BigInt(10n*(10n**18n)))).to.be.true;
+	    expect(multi.bigClose(newbal,
+				  strtbal + 10n*(10n**18n),
+				  1)).to.be.true;
 	    // Slash eth
-	    const strtbal2 = await ethers.provider.getBalance(escrow.address);
+	    const strtbal2 = BigInt(await ethers.provider
+				    .getBalance(escrow.address));
 
 	    // Slash 1 eth
 	    await epochStakeEscrow.slashEth(1n * (10n**18n));
-	    const newbal2 = await ethers.provider.getBalance(escrow.address);
+	    const newbal2 = BigInt(await ethers.provider
+				   .getBalance(escrow.address));
 	    //console.log(`start balance: ${strtbal2}  new balance: ${newbal2}` );
-	    expect(multi.bigClose(BigInt(String(newbal2)),BigInt(String(strtbal2)) + BigInt(String(1n*(10n**18n))))).to.be.true;
+	    expect(multi.bigClose(newbal2,
+				  strtbal2 + 1n*(10n**18n))).to.be.true;
 
 	});
     });
@@ -317,6 +348,12 @@ describe("EpochStake contract", function () {
 	    await expect (fastStake.connect(addr1).snapshot()).to.be.revertedWith('EpochStake: no epoch boundary');
 	    await expect (fastStake.currentEpoch()).to.be.revertedWith('Epoch: epoch is negative');
 	    process.stdout.write(`            waiting for epoch boundary ${epochstart}`);
+	    // transfer 100 tokens to Faststake contract
+	    await XNETToken.transfer(fastStake.address,
+				     100n * (10n **18n));
+	    // transfer 10 Eth to Faststake contract
+	    await owner.sendTransaction({ to: fastStake.address,
+	     				  value: (10n * (10n ** 18n)) });
 	    tm = getCurrentUnixTimeInSeconds();
 	    while(tm < epochstart ) {
 		process.stdout.write(".");
@@ -330,6 +367,24 @@ describe("EpochStake contract", function () {
 	    expect( await fastStake.currentEpoch()).to.equal(0);
 	    expect( await fastStake.nextEpoch()).to.equal(1);
 
+	    // connect staker to contract
+	    const fastStakeStaker = fastStake.connect(addr1);
+	    
+	    // request staking reduction of 50% for both assets
+	    await fastStakeStaker.subtractEth(5n * (10n ** 18n));
+	    await fastStakeStaker.subtractAsset(XNETToken.address,
+						50n * (10n ** 18n));
+
+	    // attempt to withdraw right after subtraction request
+	    // should fail
+
+	    await expect (fastStakeStaker.withdrawEth(5n * (10n ** 18n)))
+		.to.be.revertedWith('EpochStake: withdraw too big');
+	    await expect (fastStakeStaker.withdrawAsset(XNETToken.address,
+							50n * (10n ** 18n)))
+		.to.be.revertedWith('EpochStake: ERC20 withdraw too big');
+
+
 	    process.stdout.write(`            waiting for epoch boundary ${epochstart+epochdur}`);
 	    tm = getCurrentUnixTimeInSeconds();
 	    while(tm < epochstart + epochdur ) {
@@ -341,7 +396,24 @@ describe("EpochStake contract", function () {
 	   
 	    // snapshot
 	    await fastStake.connect(addr1).snapshot();
+
+	    // make sure epoch counter is correct
 	    expect( await fastStake.nextEpoch()).to.equal(2);
+
+	    // witherdrawls should now succeed
+	    await fastStakeStaker.withdrawEth(5n * (10n ** 18n));
+	    await fastStakeStaker.withdrawAsset(XNETToken.address,
+						50n * (10n ** 18n));
+
+	    // Verify staked balances
+	    expect(multi.bigClose(await fastStake.getStakedBalance(AddressZero),
+				  5n * (10n **18n),
+				  1)).to.be.true;
+	    expect(multi.bigClose(await fastStake
+				  .getStakedBalance(XNETToken.address),
+				  50n * (10n **18n),
+				  1)).to.be.true;
+	    
 	});
     });
 	    

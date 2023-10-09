@@ -66,12 +66,12 @@ import "./Epoch.sol";
  * Beacuse of the nature of the Ethereum blockchain, there is no
  * independent timer mechanism to trigger the epoch boundary
  * transition. Thus, an external entity must call the epoch_transition
- * method. This method compares the previous value of current_epoch
+ * method. This method compares the previous value of current_epoch_plus1
  * with the value calculated based on blockchain time. If the
- * calculated value is greater than current_epoch, then boundary
- * transition operations are performed and current_epoch is updated.
+ * calculated value is greater than current_epoch_plus1, then boundary
+ * transition operations are performed and current_epoch_plus1 is updated.
 
- * When an instance of EpochStake is created, current_epoch is set to
+ * When an instance of EpochStake is created, current_epoch_plus1 is set to
  * zero. This means that the next call to epoch_transition is very
  * likely to trigger the boundary transition. For that reason, the
  * first time this method is called, it must be called by the staker
@@ -90,7 +90,7 @@ contract EpochStake is Epoch, AccessControl {
   event CancelStakeSubtraction(address staker, address token);
   event Snapshot(address actor, uint256 epoch, address asset, uint256 amount);
   event Withdraw(address staker, address token, uint256 amount);
-  event AddToken(address agent, address token);
+  event TokenAdd(address agent, address token);
   event EpochTransition(uint256 old_epoch, uint256 new_epoch);
 
   /* Roles */
@@ -100,7 +100,7 @@ contract EpochStake is Epoch, AccessControl {
   bytes32 public constant STAKER_ADMIN= keccak256("STAKER_ADMIN");
 
   /* Public member varaibles */
-  uint256 public current_epoch;
+  uint256 public current_epoch_plus1;
   
   /* NOTE: staked_eth must never be greater than native asset balance */
   uint256 public staked_eth;	/* quantity of native asset staked */
@@ -178,7 +178,7 @@ contract EpochStake is Epoch, AccessControl {
     require(_isToken(addr),
 	    "EpochStake: non-token address");
     tokens.push(addr);
-    emit AddToken(msg.sender,addr);
+    emit TokenAdd(msg.sender,addr);
   }
     
   /* constructor just assigns staker and escrow roles */
@@ -205,6 +205,7 @@ contract EpochStake is Epoch, AccessControl {
 	  require( _isToken(_tokens[i]),
 		   "EpochStake: bad token in list");
 	  tokens.push(_tokens[i]);
+	  emit TokenAdd(msg.sender,_tokens[i]);
 	}
   }
 
@@ -263,13 +264,13 @@ contract EpochStake is Epoch, AccessControl {
 	    hasRole(STAKER_ROLE,msg.sender),
 	    "EpochStake: no snapshot access");
     uint256 epoch = nextEpoch(); /* current epoch +1 */
-    require (epoch > current_epoch,
+    require (epoch > current_epoch_plus1,
 	     "EpochStake: no epoch boundary");
 
     /* set firstsnap flag */
     firstsnap = true;
-    uint256 oldEpoch = current_epoch;
-    current_epoch = epoch;
+    uint256 oldEpoch = current_epoch_plus1;
+    current_epoch_plus1 = epoch;
     AssetSnapshot[] storage snapArray = snapshots[epoch];
     
     /* Process native asset */
@@ -317,7 +318,7 @@ contract EpochStake is Epoch, AccessControl {
       snapArray.push(assetsnap);
       
     }
-    emit EpochTransition(oldEpoch,current_epoch);
+    emit EpochTransition(oldEpoch,current_epoch_plus1);
   }    
     
     
@@ -410,7 +411,7 @@ contract EpochStake is Epoch, AccessControl {
       amount = balance-staked_eth; /* must always be positive */
     }
     require (amount <= balance-staked_eth,
-	     "EpochStake: withdraw too big!");
+	     "EpochStake: withdraw too big");
     emit Withdraw(msg.sender,address(0x0),amount);
     Address.sendValue(payable(msg.sender),amount);
   }
@@ -430,12 +431,12 @@ contract EpochStake is Epoch, AccessControl {
 	     "EpochStake: invalid token");
     uint256 balance = IERC20(token).balanceOf(address(this));
     /* the staked balance must never be greater than the blance */
-    assert(balance <= staked_erc20[token]);
+    assert(balance >= staked_erc20[token]);
     if (amount == 0) {
       amount = balance-staked_erc20[token];
     }
     require (amount <= balance-staked_erc20[token],
-	     "EpochStake: ERC20 witheraw too big");
+	     "EpochStake: ERC20 withdraw too big");
     emit Withdraw(msg.sender,token,amount);
     transferTokens(token,msg.sender,amount);
   }
@@ -445,7 +446,7 @@ contract EpochStake is Epoch, AccessControl {
    * holders of the STAKER_ROLE. If amount is zero, request full amount.
    */
 
-  function subtract(uint256 amount) public virtual onlyRole(STAKER_ROLE) {
+  function subtractEth(uint256 amount) public virtual onlyRole(STAKER_ROLE) {
     /* the staked balance must never be greater than the balance */
     assert(staked_eth <= address(this).balance);
     if (amount == 0) {
@@ -458,7 +459,7 @@ contract EpochStake is Epoch, AccessControl {
   }
 
   /* cancel native token stake subtraction request */
-  function cancelSubtract() public virtual onlyRole(STAKER_ROLE) {
+  function cancelSubtractEth() public virtual onlyRole(STAKER_ROLE) {
     /* the staked balance must never be greater than the balance */
     assert(staked_eth <= address(this).balance);
     require (eth_subtract_request > 0,
@@ -472,7 +473,7 @@ contract EpochStake is Epoch, AccessControl {
    * holders of the STAKER_ROLE. If amount is zero, request full amount.
    */
 
-  function subtract(address token,uint256 amount)
+  function subtractAsset(address token,uint256 amount)
     public virtual onlyRole(STAKER_ROLE) {
     require (inTokens(token),
 	     "EpochStake: invalid token");
@@ -494,7 +495,7 @@ contract EpochStake is Epoch, AccessControl {
    * holders of the STAKER_ROLE.
    */
 
-  function cancelSubtract(address token)
+  function cancelSubtractAsset(address token)
     public virtual onlyRole(STAKER_ROLE) {
     require (inTokens(token),
 	     "EpochStake: invalid token");
