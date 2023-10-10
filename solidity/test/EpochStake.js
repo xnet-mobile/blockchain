@@ -346,7 +346,7 @@ describe("EpochStake contract", function () {
     
     describe("Epoch Transitions from pre-zero to post zero", function() {
 	
-	it("Test epoch boundary transition with stake reduction", async function() {
+	it("Test epoch boundary transition with stake reduction, including emission of RequestStakeSubtraction event", async function() {
 	    const {epochstart, epochdur, XNETToken, fastStake, owner, addr1, addr2} = await loadFixture(deployFastEpochFixture);
 	    // we are in epoch -1 territory to start with
 	    expect( await fastStake.nextEpoch()).to.equal(0);
@@ -424,6 +424,94 @@ describe("EpochStake contract", function () {
 				  .getStakedBalance(XNETToken.address),
 				  50n * (10n **18n),
 				  1)).to.be.true;
+	    
+	});
+	it("Test epoch boundary transition with canceled stake reduction, including emission of CancelStakeSubtraction event", async function() {
+	    const {epochstart, epochdur, XNETToken, fastStake, owner, addr1, addr2} = await loadFixture(deployFastEpochFixture);
+	    // we are in epoch -1 territory to start with
+	    expect( await fastStake.nextEpoch()).to.equal(0);
+	    await expect (fastStake.connect(addr1).snapshot()).to.be.revertedWith('EpochStake: no epoch boundary');
+	    await expect (fastStake.currentEpoch()).to.be.revertedWith('Epoch: epoch is negative');
+	    process.stdout.write(`            waiting for epoch boundary ${epochstart + 2*epochdur}`);
+	    // transfer 100 tokens to Faststake contract
+	    await XNETToken.transfer(fastStake.address,
+				     100n * (10n **18n));
+	    // transfer 10 Eth to Faststake contract
+	    await owner.sendTransaction({ to: fastStake.address,
+	     				  value: (10n * (10n ** 18n)) });
+	    tm = getCurrentUnixTimeInSeconds();
+	    while(tm < epochstart + 2*epochdur ) {
+		process.stdout.write(".");
+		await sleep(500);	// half a second
+		tm = getCurrentUnixTimeInSeconds();
+	    }
+	    console.log(`done: ${tm}`);
+	   
+	    // snapshot
+	    await fastStake.connect(addr1).snapshot();
+	    expect( await fastStake.currentEpoch()).to.equal(0);
+	    expect( await fastStake.nextEpoch()).to.equal(1);
+
+	    // connect staker to contract
+	    const fastStakeStaker = fastStake.connect(addr1);
+	    
+	    // request staking reduction of 100% for both assets
+	    const sub1 = await fastStakeStaker
+		  .subtractEth(0);
+	    await expect(sub1).to.emit(fastStake,'RequestStakeSubtraction')
+		.withArgs(addr1.address,AddressZero,10n * (10n ** 18n));
+	    const sub2 = await fastStakeStaker
+		  .subtractAsset(XNETToken.address,
+				 0);
+	    await expect(sub2).to.emit(fastStake,'RequestStakeSubtraction')
+		.withArgs(addr1.address,XNETToken.address,100n * (10n ** 18n));
+
+	    // attempt to withdraw right after subtraction request
+	    // should fail
+
+	    await expect (fastStakeStaker.withdrawEth(5n * (10n ** 18n)))
+		.to.be.revertedWith('EpochStake: withdraw too big');
+	    await expect (fastStakeStaker.withdrawAsset(XNETToken.address,
+							50n * (10n ** 18n)))
+		.to.be.revertedWith('EpochStake: ERC20 withdraw too big');
+
+	    // cancel stake subtraction requests
+
+	    const can1 = await fastStakeStaker
+		  .cancelSubtractEth();
+	    await expect(can1).to.emit(fastStake,'CancelStakeSubtraction')
+		.withArgs(addr1.address,AddressZero);
+
+	    const can2 = await fastStakeStaker
+		  .cancelSubtractAsset(XNETToken.address);
+	    await expect(can2).to.emit(fastStake,'CancelStakeSubtraction')
+		.withArgs(addr1.address,XNETToken.address);
+
+
+	    process.stdout.write(`            waiting for epoch boundary ${epochstart+epochdur*3}`);
+	    tm = getCurrentUnixTimeInSeconds();
+	    while(tm < epochstart + epochdur*3 ) {
+		process.stdout.write(".");
+		await sleep(500);	// one second
+		tm = getCurrentUnixTimeInSeconds();
+	    }
+	    console.log(`done: ${tm}`);
+
+	    // snapshot
+	    await fastStake.connect(addr1).snapshot();
+
+	    // make sure epoch counter is correct
+	    expect( await fastStake.nextEpoch()).to.equal(3);
+
+	    // witherdrawls should fail, as stake reduction was canceled
+	    
+	    await expect (fastStakeStaker.withdrawEth(5n * (10n ** 18n)))
+		.to.be.revertedWith('EpochStake: withdraw too big');
+	    await expect (fastStakeStaker.withdrawAsset(XNETToken.address,
+							50n * (10n ** 18n)))
+		.to.be.revertedWith('EpochStake: ERC20 withdraw too big');
+
+	    return;
 	    
 	});
     });
