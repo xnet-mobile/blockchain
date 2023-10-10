@@ -90,7 +90,7 @@ contract EpochStake is Epoch, AccessControl {
   event CancelStakeSubtraction(address staker, address token);
   event Snapshot(address actor, uint256 epoch, address asset, uint256 amount);
   event Withdraw(address staker, address token, uint256 amount);
-  event TokenAdd(address agent, address token);
+  event AddToken(address agent, address token);
   event EpochTransition(uint256 old_epoch, uint256 new_epoch);
 
   /* Roles */
@@ -178,7 +178,7 @@ contract EpochStake is Epoch, AccessControl {
     require(_isToken(addr),
 	    "EpochStake: non-token address");
     tokens.push(addr);
-    emit TokenAdd(msg.sender,addr);
+    emit AddToken(msg.sender,addr);
   }
     
   /* constructor just assigns staker and escrow roles */
@@ -205,7 +205,7 @@ contract EpochStake is Epoch, AccessControl {
 	  require( _isToken(_tokens[i]),
 		   "EpochStake: bad token in list");
 	  tokens.push(_tokens[i]);
-	  emit TokenAdd(msg.sender,_tokens[i]);
+	  emit AddToken(msg.sender,_tokens[i]);
 	}
   }
 

@@ -279,7 +279,7 @@ describe("EpochStake contract", function () {
 	    const {XNETToken, epochStake, owner, addr1, addr2} = await loadFixture(deployEpochStakeFixture);
 	    // transfer 1M tokens to EpochStake contract
 	    await XNETToken.transfer(epochStake.address,1000000n * (10n ** 18n))
-	    // transfer 10000 Wei to EpochStake contract
+	    // transfer 10000 Eth to EpochStake contract
 	    await owner.sendTransaction({ to: epochStake.address,
 	     				  value: 1000n * (10n ** 18n) });
 	    // attempt unstaked asset withdrawl by Escrow agent, should revert
@@ -289,7 +289,12 @@ describe("EpochStake contract", function () {
 	    const strtbal = BigInt(await ethers.provider
 				   .getBalance(addr1.address));
 	    //console.log(`starting balance of staker: ${strtbal}`);
-	    await epochStake.connect(addr1).withdrawEth(0);
+	    const withdrw = await epochStake.connect(addr1).withdrawEth(0);
+
+	    // test emission of Withdraw event
+	    await expect(withdrw).to.emit(epochStake, 'Withdraw')
+		.withArgs(addr1.address,AddressZero, 1000n * (10n ** 18n));
+	    
 	    const newbal =  await ethers.provider.getBalance(addr1.address);
 	    //console.log(`ending balance of staker: ${newbal}`);
 	    expect(multi.bigClose(newbal,
@@ -371,9 +376,15 @@ describe("EpochStake contract", function () {
 	    const fastStakeStaker = fastStake.connect(addr1);
 	    
 	    // request staking reduction of 50% for both assets
-	    await fastStakeStaker.subtractEth(5n * (10n ** 18n));
-	    await fastStakeStaker.subtractAsset(XNETToken.address,
-						50n * (10n ** 18n));
+	    const sub1 = await fastStakeStaker
+		  .subtractEth(5n * (10n ** 18n));
+	    await expect(sub1).to.emit(fastStake,'RequestStakeSubtraction')
+		.withArgs(addr1.address,AddressZero,5n * (10n ** 18n));
+	    const sub2 = await fastStakeStaker
+		  .subtractAsset(XNETToken.address,
+				 50n * (10n ** 18n));
+	    await expect(sub2).to.emit(fastStake,'RequestStakeSubtraction')
+		.withArgs(addr1.address,XNETToken.address,50n * (10n ** 18n));
 
 	    // attempt to withdraw right after subtraction request
 	    // should fail
