@@ -479,7 +479,7 @@ contract EpochStake is Epoch, AccessControl {
 	     "EpochStake: invalid token");
     uint256 balance = IERC20(token).balanceOf(address(this));
     /* the staked balance must never be greater than the blance */
-    assert(balance <= staked_erc20[token]);
+    assert(balance >= staked_erc20[token]);
     if (amount == 0) {
       amount = staked_erc20[token];
     }
@@ -501,7 +501,7 @@ contract EpochStake is Epoch, AccessControl {
 	     "EpochStake: invalid token");
     uint256 balance = IERC20(token).balanceOf(address(this));
     /* the staked balance must never be greater than the blance */
-    assert(balance <= staked_erc20[token]);
+    assert(balance >= staked_erc20[token]);
 
     require (erc20_subtract_request[token] > 0,
 	     "EpochStake: no subtraction request");
