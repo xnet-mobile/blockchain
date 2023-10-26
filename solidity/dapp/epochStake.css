@@ -1,0 +1,118 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+
+body {
+    font-family: 'Roboto', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    font-weight: 400;
+}
+  
+/* Spinner styles */
+.loader {
+    border: 5px solid #f3f3f3;
+    border-top: 5px solid #555; 
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+}
+  
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+/* Modal styles */ 
+
+.hidden {
+    display: none; 
+}
+
+.addr-letter {
+    color: #944b1f;
+}
+
+.addr-number {
+    color: darkblue;
+}
+
+.es-contract {
+    display: flex;
+    flex-direction: row;
+    align-items: left;
+}
+
+.contract-addr {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+}
+		 
+.token-display {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    
+}
+  
+.balance {
+    margin-right: 1rem;
+    min-width: 130px;
+}
+
+.close {
+    cursor: pointer;
+}
+  
+.connect-button {
+    padding: 0.5rem 1rem;
+    margin: 0.5rem;
+    background: #aab9e0;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    width: 150px;
+}
+
+.modal-content {
+    padding: 0.5rem 0.5rem;
+    background: #322;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    width: 500px;
+}
+      
+.connect-button.connected {
+    background: #7090c0;
+}
+
+input[type="text"] {
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    width: 150px;
+  }
+
+button {
+    padding: 0.5rem 1rem;
+    background: #d0d0d0;
+    color: white;  
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.faucet-button.connected {
+    background: #aab9e0;
+}
+
+.connect-button:hover {
+    background: #103090;
+}
+    
+.faucet-button.connected:hover {
+    background: #103090;
+}

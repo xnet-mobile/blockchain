@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XNET Radio DApp</title>
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js" type="application/javascript"></script>
+    <script src="./erc20.abi.js" type="application/javascript"></script>
+    <script src="./epochStake.abi.js" type="application/javascript"></script>
+    <script src="./multi.js" type="application/javascript"></script>
+    <link rel="stylesheet" href="./epochStake.css">
+</head>
+
+<body>
+    <!-- Spinner --> 
+    <div id="spinner" class="hidden">
+      <div class="loader"></div>
+    </div>
+
+    <!-- Error Modal -->
+    <div id="errorModal" class="modal hidden">
+      <div class="modal-content">
+	<span class="close">&times;</span>
+	<p id="errorMsg"></p>
+      </div>
+    </div>
+
+    <h2>XNET Radio DApp</h2>
+    <p>Interact with XNET radio smart contracts</p>
+    <div class="token-display">
+      <h3>Wallet $XNET balance</h3>
+      <span class="balance" id="wallet-xnet-balance">no wallet connected</span>
+      <button id="connect-wallet" class="connect-button">Connect Wallet</button>
+    </div>
+    <h3>EpochStake contract</h3>
+    <span id="epochnum">no contract connected, epoch unknown</span>
+    <div class "es-contract">
+      <div class="contract-addr">
+        <input type="text" id="esaddr" placeholder="EpochStake Contract Address">
+        <button id="connect-contract" onclick="updateContractAddr(esaddr.value)">Update Contract Address</button>
+      </div>
+      <div class="token-display">
+	<h4>$XNET unstaked balance</h4>
+	<span class="balance" id="contract-xnet-balance">no contract connected</span>
+	<h4>$XNET staked balance</h4>
+	<span class="balance" id="contract-xnet-staked">no contract connected</span>
+	
+      </div>
+      <div class="token-display">
+	<input type="text" id="depositAmount" placeholder="Deposit Amount">
+        <button onclick="transferToken()">Deposit</button>
+      
+        <input type="text" id="withdrawAmount" placeholder="Withdraw Amount">
+        <button onclick="withdraw()">Withdraw</button>
+      </div>
+    </div>
+    <!-- Interaction for snapshot -->
+    <div class="action">
+      <button onclick="snapshot()">Snapshot</button>
+    </div>
+      
+    <!-- Interaction for staking -->
+
+    <script src="./epochStake.js" type="application/javascript"></script>
+
+    <script>
+      async function snapshot() {
+          try {
+              const tx = await epochStakeContract.snapshot();
+              await tx.wait();
+              alert("Snapshot taken successfully!");
+          } catch (error) {
+              console.error("Error taking snapshot:", error);
+              alert("Error taking snapshot. See console for details.");
+          }
+      }
+
+      
+      async function stake() {
+          const tokenAddress = document.getElementById("tokenAddress").value;
+          const amount = ethers.utils.parseEther(document.getElementById("amount").value);
+          try {
+              const tx = await epochStakeContract.stake(tokenAddress, amount);
+              await tx.wait();
+              alert("Staked successfully!");
+          } catch (error) {
+              console.error("Error staking:", error);
+              alert("Error staking. See console for details.");
+          }
+        }
+      
+    </script>
+
+</body>
+
