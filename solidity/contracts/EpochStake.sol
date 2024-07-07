@@ -88,11 +88,13 @@ contract EpochStake is Epoch, AccessControl {
   event Slash(address agent, address token, uint256 amount);
   event RequestStakeSubtraction(address staker, address token, uint256 amount);
   event CancelStakeSubtraction(address staker, address token);
-  event Snapshot(address actor, uint256 epoch, address asset, uint256 amount);
+  event Snapshot(address actor, uint256 epoch, address asset,
+		 uint256 amount, uint256 stake_lock);
   event Withdraw(address staker, address token, uint256 amount);
   event AddToken(address agent, address token);
   event EpochTransition(uint256 old_epoch, uint256 new_epoch);
-
+  event AddStakedAsset(address asset, uint256 amount);
+  
   /* Roles */
   bytes32 public constant ESCROW_ROLE = keccak256("ESCROW_ROLE");
   bytes32 public constant ESCROW_ADMIN= keccak256("ESCROW_ADMIN");
@@ -104,7 +106,10 @@ contract EpochStake is Epoch, AccessControl {
   
   /* NOTE: staked_eth must never be greater than native asset balance */
   uint256 public staked_eth;	/* quantity of native asset staked */
-  
+
+  /* stake_lock_eth -- unlocking floor for staked Eth */
+  uint256 public stake_lock_eth
+    
   /* amount of native asset requested to be subtracted from stake */
   uint256 public eth_subtract_request;
 
@@ -112,6 +117,9 @@ contract EpochStake is Epoch, AccessControl {
    * assets that can be staked */
 
   address[] public tokens;
+
+  /* A mapping of token addresses to stake lock */
+  mapping(address => uint256) public stake_lock_erc20;
 
   /* quantity of ERC20 tokens staked, must always be less than balance */
   mapping(address => uint256) public staked_erc20;
@@ -281,13 +289,19 @@ contract EpochStake is Epoch, AccessControl {
     /* process subtraction request */
     if (eth_subtract_request >= balance)
       eth_subtract_request = balance;
+    if (balance < stake_lock_eth)
+      eth_subtract_request = 0;
+    else if (balance - eth_subtract_request < stake_lock_eth) {
+      eth_subtract_request = stake_lock_eth - balance;
+    }
     staked_eth = balance - eth_subtract_request;
     /* zero out subtraction request */
     eth_subtract_request = 0;
 
     /* check for a change, emit event if so */
     if (oldbal != staked_eth) {
-      emit Snapshot(msg.sender,epoch,address(0x0), staked_eth);
+      emit Snapshot(msg.sender,epoch,address(0x0),
+		    staked_eth,stake_lock_eth);
     }
     /* Record snapshot */ 
     AssetSnapshot memory assetsnap;
@@ -303,14 +317,21 @@ contract EpochStake is Epoch, AccessControl {
       balance = IERC20(token).balanceOf(address(this));
       /* process subtraction requests */
       uint256 subval = erc20_subtract_request[token];
+      uint256 stakelock= stake_lock_erc20[token];
       if (subval >= balance)
 	subval = balance;
+      if (balance < stakelock)
+	subval = 0;
+      else if (balance - subval < stakelock) {
+	subval = stakelock-balance;
+      }
       staked_erc20[token] = balance - subval;
       erc20_subtract_request[token]=0;
       
       /* emit event on change */
       if (oldbal != staked_erc20[token]) {
-	emit Snapshot(msg.sender,epoch,token, staked_erc20[token]);
+	emit Snapshot(msg.sender,epoch,token, staked_erc20[token],
+		      stake_lock_erc20[token]);
       }
       assetsnap.timestamp = block.timestamp;
       assetsnap.asset = token;
@@ -410,6 +431,8 @@ contract EpochStake is Epoch, AccessControl {
     if (amount == 0) {
       amount = balance-staked_eth; /* must always be positive */
     }
+    require (amount > 0,
+	     "EpochStake: zero eth withdraw");
     require (amount <= balance-staked_eth,
 	     "EpochStake: withdraw too big");
     emit Withdraw(msg.sender,address(0x0),amount);
@@ -435,6 +458,8 @@ contract EpochStake is Epoch, AccessControl {
     if (amount == 0) {
       amount = balance-staked_erc20[token];
     }
+    require (amount > 0,
+	     "EpochStake: zero asset withdraw");
     require (amount <= balance-staked_erc20[token],
 	     "EpochStake: ERC20 withdraw too big");
     emit Withdraw(msg.sender,token,amount);
@@ -442,8 +467,41 @@ contract EpochStake is Epoch, AccessControl {
   }
 
   /**
+   * Sets the stake_lock_eth value. If the value of stake_lock_eth is
+   * greater than zero, stake withdrawal will be limited to prevent
+   * reductions in staked eth below the stake_lock_eth threshold. 
+   *
+   * See the stake locking discussion in the intro for more
+   * information
+   */
+  function stakeLockEth(uint256 amount)
+    public virtual onlyRole(ESCROW_ROLE) {
+    stake_lock_eth = amount;
+  }
+
+  /**
+   * Sets the stake_lock_erc20[token] value. If the value of
+   * stake_lock_erc20[token] is greater than zero, stake withdrawl
+   * will be limited to prevent reductions in the staked token below
+   * the stake_lock_erc20[token] threshold.
+   *
+   * See the stake locking discussion in the intro for more
+   * information
+   */
+  function stakeLockAsset(address token,
+			  uint256 amount)
+    public virtual onlyRole(ESCROW_ROLE) {
+    require (inTokens(token),
+	     "EpochStake: invalid token");
+    stake_lock_erc20[token]=amount;
+  }
+
+    
+  
+  /**
    * Request subtraction of native asset from stake. Callable only by
-   * holders of the STAKER_ROLE. If amount is zero, request full amount.
+   * holders of the STAKER_ROLE. If amount is zero, request current
+   * full amount.
    */
 
   function subtractEth(uint256 amount) public virtual onlyRole(STAKER_ROLE) {
@@ -452,6 +510,8 @@ contract EpochStake is Epoch, AccessControl {
     if (amount == 0) {
       amount = staked_eth;
     }
+    require (amount > 0,
+	     "EpochStake: zero eth subtraction");
     require (amount <= staked_eth,
          "EpochStake: subtraction too big!");
     eth_subtract_request = amount;
@@ -470,7 +530,8 @@ contract EpochStake is Epoch, AccessControl {
     
   /**
    * Request subtraction of ERC20 asset from stake. Callable only by
-   * holders of the STAKER_ROLE. If amount is zero, request full amount.
+   * holders of the STAKER_ROLE. If amount is zero, request current
+   * full amount.
    */
 
   function subtractAsset(address token,uint256 amount)
@@ -483,6 +544,8 @@ contract EpochStake is Epoch, AccessControl {
     if (amount == 0) {
       amount = staked_erc20[token];
     }
+    require (amount > 0,
+	     "EpochStake: zero asset subtraction");
     require (amount <= staked_erc20[token],
 	     "EpochStake: ERC20 subtraction too big");
 
@@ -550,5 +613,38 @@ contract EpochStake is Epoch, AccessControl {
     SafeERC20.safeTransfer(IERC20(token), msg.sender, amount);
   }
 
+  /**
+   * @dev add Eth directly to the stake -- available only to the
+   * escrow agent. To be used in contract initialization to bootstrap
+   * staking, or under other exceptional stake-increasing
+   * circumstances.
+   */
 
+  addStakedEth() public virtual payable onlyRole(ESCROW_ROLE) {
+    uint256 amount = msg.value;
+    require (amount > 0,
+	     "EpochStake: zero value add");
+    staked_eth += amount;
+    emit AddStakedAsset(0,amount);
+  }
+
+  /**
+   * @dev add ERC20 token asset directly to the stake -- available
+   * only to the escrow agent. To be used in contract initialization
+   * to bootstrap staking, or under other exceptional stake-increasing
+   * circumstances.
+   *
+   * Before call, escrow agent must invoke
+   * token.approve(thisContractAddress,amount) or call will fail.
+   */
+
+  addStakedAsset(token,amount)
+    public virtual payable onlyRole(ESCROW_ROLE) {
+    require(inTokens(token),
+	    "EpochStake: token not approved");
+    require(token.transferFrom(msg.sender, address(this), amount),
+	    "EpochStake: transfer failed");
+    staked_erc20[token] += amount;
+    emit AddStakedAsset(token,amount);
+    
 }
